@@ -1,0 +1,17 @@
+# Start Generation Here
+# Ignore all log files
+*.log
+
+# Ignore all temporary files
+*.tmp
+
+# Ignore all backup files
+*~ 
+
+# Ignore node_modules folder
+node_modules/
+
+# Ignore environment variable files
+.env
+
+# End Generation Here
