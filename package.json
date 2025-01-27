@@ -1,15 +1,37 @@
 {
-  "name": "downloads-manager",
+  "name": "file-organizer",
   "version": "1.0.0",
-  "main": "main.js",
+  "main": "main.electron.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "electron .",
+    "dev": "electron . --debug",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
-    "chokidar": "^4.0.3"
+    "chokidar": "^4.0.3",
+    "electron-log": "^5.2.4"
+  },
+  "description": "",
+  "build": {
+    "appId": "com.fileorganizer.app",
+    "productName": "File Organizer",
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^34.0.1",
+    "electron-builder": "^25.1.8"
   }
 }
