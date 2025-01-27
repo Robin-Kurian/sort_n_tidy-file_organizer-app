@@ -11,6 +11,9 @@
 # Ignore node_modules folder
 node_modules/
 
+# Ignore distribution folder
+dist/
+
 # Ignore environment variable files
 .env
 
