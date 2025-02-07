@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
-const path = require("path");
+// Modules to control application life and create native browser window
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require("electron");
+const path = require("node:path");
 const fs = require("fs");
 const chokidar = require("chokidar");
 
@@ -18,7 +19,6 @@ function createFolderIfNotExists(folderPath) {
 // Function to move file to appropriate folder
 function moveFile(filePath) {
   try {
-    // Skip if it's a directory
     if (fs.statSync(filePath).isDirectory()) {
       return;
     }
@@ -65,7 +65,7 @@ function moveFile(filePath) {
       ],
       audio: ["mp3", "wav", "ogg", "flac", "m4a", "aac"],
       video: ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm"],
-      archives: ["zip", "rar", "7z", "tar", "gz"],
+      compressed: ["zip", "rar", "7z", "tar", "gz"],
       apps: ["exe", "msi", "bat", "cmd"],
       ebooks: ["epub", "mobi", "azw", "azw3", "fb2", "lit"],
     };
@@ -105,7 +105,7 @@ function moveFile(filePath) {
 async function processExistingFiles() {
   mainWindow.webContents.send(
     "log",
-    "Processing existing files in Downloads folder..."
+    `Processing existing files in ${selectedPath} folder...`
   );
   const files = fs.readdirSync(selectedPath);
   for (const file of files) {
@@ -133,7 +133,7 @@ function startWatcher() {
       "**/Images/**",
       "**/Audio/**",
       "**/Video/**",
-      "**/Archives/**",
+      "**/Compressed/**",
       "**/Apps/**",
       "**/Ebooks/**",
       "**/Others/**",
@@ -148,28 +148,36 @@ function startWatcher() {
     .on("add", (filePath) => {
       setTimeout(() => moveFile(filePath), 1000);
     })
-    .on("error", (error) =>
-      mainWindow.webContents.send("log", `Watcher error: ${error}`)
-    );
+    .on("error", (error) => {
+      mainWindow.webContents.send("log", `Watcher error: ${error}`);
+    });
 
   mainWindow.webContents.send("log", `Monitoring folder: ${selectedPath}`);
 }
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 500,
+    height: 550,
     webPreferences: {
+      // preload: path.join(__dirname, "preload.js"),
       nodeIntegration: true,
       contextIsolation: false,
+      // enableRemoteModule: false,
     },
+    icon: path.join(__dirname, "icon.png"), // Set the app icon
+    resizable: false, // Make the window non-resizable
   });
-
   mainWindow.loadFile("index.html");
+  // Open the DevTools.
+  // mainWindow.webContents.openDevTools();
 }
 
+// Remove the default menu
+Menu.setApplicationMenu(null);
 app.whenReady().then(createWindow);
 
+// Quit when all windows are closed
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
@@ -200,7 +208,6 @@ ipcMain.handle("select-folder", async () => {
 
   if (!result.canceled && result.filePaths.length > 0) {
     selectedPath = result.filePaths[0];
-    // Stop existing watcher if running
     if (watcher) {
       watcher.close();
       mainWindow.webContents.send("log", "Stopped monitoring previous folder");
@@ -209,3 +216,6 @@ ipcMain.handle("select-folder", async () => {
   }
   return null;
 });
+
+// In this file you can include the rest of your app's specific main process
+// code. You can also put them in separate files and require them here.
