@@ -210,7 +210,7 @@ ipcMain.handle("select-folder", async () => {
     selectedPath = result.filePaths[0];
     if (watcher) {
       watcher.close();
-      mainWindow.webContents.send("log", "Stopped monitoring previous folder");
+      mainWindow.webContents.send("log", `Selected ${selectedPath} folder`);
     }
     return selectedPath;
   }
