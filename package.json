@@ -1,7 +1,7 @@
 {
   "name": "file-organizer",
   "version": "1.0.0",
-  "main": "main.electron.js",
+  "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --debug",
