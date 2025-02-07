@@ -1,0 +1,65 @@
+body {
+  font-family: Arial, sans-serif;
+  background: white;
+}
+
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+  /* background: white; */
+  /* padding: 20px; */
+  border-radius: 8px;
+  /* box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); */
+}
+
+.controls {
+  margin-bottom: 20px;
+}
+
+button {
+  padding: 10px 20px;
+  margin-right: 10px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#startBtn {
+  background: #4caf50;
+  color: white;
+}
+
+#stopBtn {
+  background: #f44336;
+  color: white;
+}
+
+.log-container {
+  height: 200px;
+  overflow-y: scroll;
+  border: 1px solid #ddd;
+  padding: 10px;
+  background: #f9f9f9;
+}
+
+.checkbox-container {
+  margin: 10px 0;
+}
+
+.folder-section {
+  margin: 20px 0;
+  /* padding: 10px; */
+  /* background: #f0f0f0; */
+  border-radius: 4px;
+}
+
+.current-folder {
+  word-break: break-all;
+  margin: 10px 0;
+  font-family: monospace;
+}
+
+#selectFolderBtn {
+  background: #2196f3;
+  color: white;
+}
