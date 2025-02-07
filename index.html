@@ -11,10 +11,12 @@
 <body>
     <div class="container">
         <div class="folder-section">
-            <p>Select the folder you want to Organize.</p>
-            <button id="selectFolderBtn">Select Folder</button>
+            <div id="folderSelectBlock">
+                <p><span class="iButton">i</span> Select the folder you want to Organize.</p>
+                <button id="selectFolderBtn">Select Folder</button>
+            </div>
             <div class="current-folder" id="currentFolder">
-                Current: Downloads
+                Selected folder: Downloads
             </div>
         </div>
 
@@ -24,10 +26,13 @@
                 <label for="processExisting">Process existing files</label>
             </div>
             <button id="startBtn">Start Monitoring</button>
-            <button id="stopBtn">Stop Monitoring</button>
+            <button id="stopBtn" class="hidden">Stop Monitoring</button>
         </div>
 
-        <h3>Activity Log</h3>
+        <h3 class="activity-log-header">
+            Activity Log
+            <img id="clearLogBtn" src="recycle-bin.png" alt="Clear Log">
+        </h3>
         <div class="log-container" id="logContainer"></div>
     </div>
 
@@ -44,10 +49,20 @@
         document.getElementById('startBtn').addEventListener('click', () => {
             const processExisting = document.getElementById('processExisting').checked;
             ipcRenderer.send('start-monitoring', processExisting);
+            document.getElementById('startBtn').classList.add('hidden');
+            document.getElementById('folderSelectBlock').classList.add('hidden');
+            document.getElementById('stopBtn').classList.remove('hidden');
         });
 
         document.getElementById('stopBtn').addEventListener('click', () => {
             ipcRenderer.send('stop-monitoring');
+            document.getElementById('stopBtn').classList.add('hidden');
+            document.getElementById('folderSelectBlock').classList.remove('hidden');
+            document.getElementById('startBtn').classList.remove('hidden');
+        });
+
+        document.getElementById('clearLogBtn').addEventListener('click', () => {
+            document.getElementById('logContainer').innerHTML = '';
         });
 
         ipcRenderer.on('log', (event, message) => {

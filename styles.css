@@ -16,6 +16,20 @@ body {
   margin-bottom: 20px;
 }
 
+.hidden {
+  display: none;
+}
+
+.iButton {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid #000;
+  text-align: center;
+  line-height: 16px;
+}
+
 button {
   padding: 10px 20px;
   margin-right: 10px;
@@ -62,4 +76,18 @@ button {
 #selectFolderBtn {
   background: #2196f3;
   color: white;
+}
+
+.activity-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#clearLogBtn {
+  margin-left: 10px;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
 }
