@@ -1,10 +1,11 @@
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const chokidar = require("chokidar"); // You'll need to install this package
 const readline = require("readline");
 
-// Get the Downloads folder path
-const downloadsPath = path.join(process.env.USERPROFILE, "Downloads");
+// Get the Downloads folder path (Windows, macOS, and Linux)
+const downloadsPath = path.join(os.homedir(), "Downloads");
 
 // Add this constant near the top of the file with other constants
 const PROTECTED_FOLDERS = ["Mobiux", "Personal", "Protected"];
@@ -12,7 +13,7 @@ const PROTECTED_FOLDERS = ["Mobiux", "Personal", "Protected"];
 // Function to create folder if it doesn't exist
 function createFolderIfNotExists(folderPath) {
   if (!fs.existsSync(folderPath)) {
-    fs.mkdirSync(folderPath);
+    fs.mkdirSync(folderPath, { recursive: true });
   }
 }
 
@@ -67,7 +68,19 @@ function moveFile(filePath) {
       audio: ["mp3", "wav", "ogg", "flac", "m4a", "aac"],
       video: ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm"],
       archives: ["zip", "rar", "7z", "tar", "gz"],
-      apps: ["exe", "msi", "bat", "cmd"],
+      apps: [
+        "exe",
+        "msi",
+        "bat",
+        "cmd",
+        "dmg",
+        "pkg",
+        "app",
+        "deb",
+        "rpm",
+        "appimage",
+        "snap",
+      ],
       ebooks: ["epub", "mobi", "azw", "azw3", "fb2", "lit"],
     };
 
@@ -88,8 +101,16 @@ function moveFile(filePath) {
     // Construct destination path
     const destinationPath = path.join(destinationFolder, fileName);
 
-    // Move the file
-    fs.renameSync(filePath, destinationPath);
+    // Move the file (EXDEV happens when source and dest are on different volumes)
+    try {
+      fs.renameSync(filePath, destinationPath);
+    } catch (moveError) {
+      if (moveError.code !== "EXDEV") {
+        throw moveError;
+      }
+      fs.copyFileSync(filePath, destinationPath);
+      fs.unlinkSync(filePath);
+    }
     console.log(`Moved ${fileName} to ${targetFolder} folder`);
   } catch (error) {
     console.error(`Error processing file: ${error.message}`);

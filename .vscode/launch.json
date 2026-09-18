@@ -24,6 +24,12 @@
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+            "osx": {
+                "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron"
+            },
+            "linux": {
+                "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron"
+            },
             "windows": {
                 "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron.cmd"
             },

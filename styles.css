@@ -1,93 +1,323 @@
+:root {
+  --text: rgba(0, 0, 0, 0.84);
+  --text-secondary: rgba(0, 0, 0, 0.55);
+  --fill: rgba(255, 255, 255, 0.1);
+  --fill-strong: rgba(255, 255, 255, 0.22);
+  --stroke: rgba(255, 255, 255, 0.42);
+  --stroke-soft: rgba(0, 0, 0, 0.06);
+  --well: rgba(255, 255, 255, 0.14);
+  --accent: #007aff;
+  --success: #248a3d;
+  --danger: #d70015;
+  --accent-fill: rgba(0, 122, 255, 0.18);
+  --accent-stroke: rgba(0, 122, 255, 0.28);
+  --success-fill: rgba(52, 199, 89, 0.2);
+  --success-stroke: rgba(52, 199, 89, 0.3);
+  --danger-fill: rgba(255, 59, 48, 0.18);
+  --danger-stroke: rgba(255, 59, 48, 0.3);
+  --shadow: 0 0.5px 0.5px rgba(255, 255, 255, 0.55) inset,
+    0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: rgba(255, 255, 255, 0.92);
+    --text-secondary: rgba(255, 255, 255, 0.6);
+    --fill: rgba(255, 255, 255, 0.06);
+    --fill-strong: rgba(255, 255, 255, 0.12);
+    --stroke: rgba(255, 255, 255, 0.14);
+    --stroke-soft: rgba(255, 255, 255, 0.08);
+    --well: rgba(0, 0, 0, 0.18);
+    --accent: #64b5ff;
+    --success: #30d158;
+    --danger: #ff6961;
+    --accent-fill: rgba(10, 132, 255, 0.24);
+    --accent-stroke: rgba(10, 132, 255, 0.36);
+    --success-fill: rgba(48, 209, 88, 0.24);
+    --success-stroke: rgba(48, 209, 88, 0.36);
+    --danger-fill: rgba(255, 69, 58, 0.24);
+    --danger-stroke: rgba(255, 69, 58, 0.36);
+    --shadow: 0 0.5px 0 rgba(255, 255, 255, 0.16) inset,
+      0 1px 2px rgba(0, 0, 0, 0.22);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
-  font-family: Arial, sans-serif;
-  background: white;
+  background: transparent;
+  color: var(--text);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu,
+    Arial, sans-serif;
+  margin: 0;
+  padding: 0 18px 18px;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+body.platform-darwin {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  body.platform-darwin {
+    background: rgba(0, 0, 0, 0.16);
+  }
+}
+
+body.platform-linux,
+body.platform-win32 {
+  background: rgba(232, 232, 237, 0.88);
+}
+
+@media (prefers-color-scheme: dark) {
+  body.platform-linux,
+  body.platform-win32 {
+    background: rgba(28, 28, 30, 0.94);
+  }
+}
+
+.titlebar {
+  display: none;
+  -webkit-app-region: drag;
+  height: 52px;
+  margin: 0 -18px 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+body.platform-darwin .titlebar {
+  display: flex;
+}
+
+.titlebar h1 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
 }
 
 .container {
-  max-width: 600px;
-  margin: 0 auto;
-  /* background: white; */
-  /* padding: 20px; */
-  border-radius: 8px;
-  /* box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.controls {
-  margin-bottom: 20px;
+.glass-panel,
+.log-container {
+  background: var(--fill);
+  border: 0.5px solid var(--stroke);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  backdrop-filter: saturate(180%) blur(36px);
+  -webkit-backdrop-filter: saturate(180%) blur(36px);
 }
 
-.hidden {
-  display: none;
+.glass-panel {
+  padding: 14px;
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-secondary);
 }
 
 .iButton {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
   border-radius: 50%;
-  border: 1px solid #000;
-  text-align: center;
-  line-height: 16px;
+  border: 1px solid currentColor;
+  font-size: 11px;
+  font-style: italic;
+  font-family: Georgia, serif;
+  line-height: 1;
+}
+
+.controls,
+.folder-section {
+  margin: 0;
+}
+
+.hidden {
+  display: none !important;
+}
+
+button,
+#clearLogBtn {
+  -webkit-app-region: no-drag;
 }
 
 button {
-  padding: 10px 20px;
-  margin-right: 10px;
-  border: none;
-  border-radius: 4px;
+  appearance: none;
+  padding: 7px 14px;
+  border: 0.5px solid transparent;
+  border-radius: 8px;
   cursor: pointer;
+  font: 590 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  background: var(--fill-strong);
+  box-shadow: var(--shadow);
+  transition: transform 120ms ease, filter 120ms ease, opacity 120ms ease;
+}
+
+button:hover {
+  filter: none;
+  background: var(--fill);
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+}
+
+#selectFolderBtn {
+  color: var(--accent);
+  background: var(--accent-fill);
+  border-color: var(--accent-stroke);
+}
+
+#selectFolderBtn:hover {
+  background: color-mix(in srgb, var(--accent-fill) 70%, var(--accent) 30%);
 }
 
 #startBtn {
-  background: #4caf50;
-  color: white;
+  color: var(--success);
+  background: var(--success-fill);
+  border-color: var(--success-stroke);
+}
+
+#startBtn:hover {
+  background: color-mix(in srgb, var(--success-fill) 70%, var(--success) 30%);
 }
 
 #stopBtn {
-  background: #f44336;
-  color: white;
+  color: var(--danger);
+  background: var(--danger-fill);
+  border-color: var(--danger-stroke);
 }
 
-.log-container {
-  height: 200px;
-  overflow-y: scroll;
-  border: 1px solid #ddd;
-  padding: 10px;
-  background: #f9f9f9;
+#stopBtn:hover {
+  background: color-mix(in srgb, var(--danger-fill) 70%, var(--danger) 30%);
 }
 
 .checkbox-container {
-  margin: 10px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
 }
 
-.folder-section {
-  margin: 20px 0;
-  /* padding: 10px; */
-  /* background: #f0f0f0; */
-  border-radius: 4px;
+.checkbox-container input {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  margin: 0;
 }
 
 .current-folder {
   word-break: break-all;
-  margin: 10px 0;
-  font-family: monospace;
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--well);
+  border: 0.5px solid var(--stroke-soft);
+  font: 400 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-secondary);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
-#selectFolderBtn {
-  background: #2196f3;
-  color: white;
+#folderSelectBlock.hidden + .current-folder {
+  margin-top: 0;
+}
+
+.log-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .activity-log-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin: 4px 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 #clearLogBtn {
-  margin-left: 10px;
-  cursor: pointer;
-  width: 20px;
-  height: 20px;
-  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  color: var(--text-secondary);
+  background: var(--fill);
+  border-radius: 8px;
+}
+
+#clearLogBtn:hover {
+  color: var(--danger);
+}
+
+.log-container {
+  height: 210px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--well);
+}
+
+.log-container > div {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  padding: 5px 0;
+  border-bottom: 0.5px solid var(--stroke-soft);
+  user-select: text;
+  -webkit-user-select: text;
+  animation: log-in 180ms ease both;
+}
+
+.log-container > div:last-child {
+  border-bottom: 0;
+}
+
+@keyframes log-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }

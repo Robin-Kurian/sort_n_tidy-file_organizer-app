@@ -5,45 +5,68 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles.css" />
-    <title>File Organizer</title>
+    <title>Sort &amp; Tidy</title>
 </head>
 
 <body>
+    <div class="titlebar">
+        <h1>Sort &amp; Tidy</h1>
+    </div>
+
     <div class="container">
-        <div class="folder-section">
+        <section class="glass-panel folder-section">
             <div id="folderSelectBlock">
-                <p><span class="iButton">i</span> Select the folder you want to Organize.</p>
-                <button id="selectFolderBtn">Select Folder</button>
+                <p class="hint">
+                    <span class="iButton" aria-hidden="true">i</span>
+                    Select the folder you want to organize.
+                </p>
+                <button id="selectFolderBtn" type="button">Select Folder</button>
             </div>
-            <div class="current-folder" id="currentFolder">
-                Selected folder: Downloads
-            </div>
-        </div>
+            <div class="current-folder" id="currentFolder">Selected folder: …</div>
+        </section>
 
-        <div class="controls">
-            <div class="checkbox-container">
+        <section class="glass-panel controls">
+            <label class="checkbox-container" for="processExisting">
                 <input type="checkbox" id="processExisting">
-                <label for="processExisting">Process existing files</label>
+                <span>Process existing files</span>
+            </label>
+            <div class="button-row">
+                <button id="startBtn" type="button">Start Monitoring</button>
+                <button id="stopBtn" class="hidden" type="button">Stop Monitoring</button>
             </div>
-            <button id="startBtn">Start Monitoring</button>
-            <button id="stopBtn" class="hidden">Stop Monitoring</button>
-        </div>
+        </section>
 
-        <h3 class="activity-log-header">
-            Activity Log
-            <img id="clearLogBtn" src="recycle-bin.png" alt="Clear Log">
-        </h3>
-        <div class="log-container" id="logContainer"></div>
+        <section class="log-section">
+            <h3 class="activity-log-header">
+                Activity Log
+                <button id="clearLogBtn" type="button" title="Clear log" aria-label="Clear log">
+                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                        <path fill="currentColor" d="M9 3h6l1 2h5v2H3V5h5l1-2zm1 6h2v10h-2V9zm4 0h2v10h-2V9zM6 8h12l-1 13H7L6 8z"/>
+                    </svg>
+                </button>
+            </h3>
+            <div class="log-container" id="logContainer"></div>
+        </section>
     </div>
 
     <script>
         const { ipcRenderer } = require('electron');
 
+        document.body.classList.add(`platform-${process.platform}`);
+
+        function setCurrentFolder(folderPath) {
+            if (!folderPath) return;
+            document.getElementById('currentFolder').textContent = `Selected folder: ${folderPath}`;
+        }
+
+        async function loadSelectedFolder() {
+            const currentPath = await ipcRenderer.invoke('get-selected-folder');
+            setCurrentFolder(currentPath);
+        }
+
         document.getElementById('selectFolderBtn').addEventListener('click', async () => {
             const newPath = await ipcRenderer.invoke('select-folder');
-            if (newPath) {
-                document.getElementById('currentFolder').textContent = `Current: ${newPath}`;
-            }
+            setCurrentFolder(newPath);
         });
 
         document.getElementById('startBtn').addEventListener('click', () => {
@@ -65,13 +88,28 @@
             document.getElementById('logContainer').innerHTML = '';
         });
 
+        ipcRenderer.on('folder-path', (event, folderPath) => {
+            setCurrentFolder(folderPath);
+        });
+
         ipcRenderer.on('log', (event, message) => {
             const logContainer = document.getElementById('logContainer');
             const logEntry = document.createElement('div');
             logEntry.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
             logContainer.appendChild(logEntry);
             logContainer.scrollTop = logContainer.scrollHeight;
+            // #region agent log
+            if (logContainer.childElementCount <= 3 || logContainer.childElementCount % 10 === 0) {
+                const mem = (performance && performance.memory) ? {
+                    usedJSHeapSize: performance.memory.usedJSHeapSize,
+                    totalJSHeapSize: performance.memory.totalJSHeapSize
+                } : {};
+                fetch('http://127.0.0.1:7547/ingest/d0098482-1d27-4250-980b-13a312dcffc3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'390797'},body:JSON.stringify({sessionId:'390797',location:'index.html:log',message:'renderer-log-append',data:{logNodeCount:logContainer.childElementCount,logLength:String(message).length,...mem},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+            }
+            // #endregion
         });
+
+        loadSelectedFolder();
     </script>
 </body>
 

@@ -1,134 +1,404 @@
-// Modules to control application life and create native browser window
 const { app, BrowserWindow, ipcMain, dialog, Menu } = require("electron");
 const path = require("node:path");
 const fs = require("fs");
+const os = require("os");
 const chokidar = require("chokidar");
 
 let mainWindow;
 let watcher;
-let selectedPath = path.join(process.env.USERPROFILE, "Downloads"); // Default path
-const PROTECTED_FOLDERS = ["Mobiux", "Personal", "Protected"];
+let selectedPath = null;
+let inFlightMoves = 0;
+let processExistingRunning = false;
+let watcherGeneration = 0;
+let debugMemTimer = null;
+let logSendCount = 0;
 
-// Create folder if it doesn't exist
-function createFolderIfNotExists(folderPath) {
-  if (!fs.existsSync(folderPath)) {
-    fs.mkdirSync(folderPath);
+// #region agent log
+function debugLog(location, message, data, hypothesisId) {
+  const mem = process.memoryUsage();
+  fetch("http://127.0.0.1:7547/ingest/d0098482-1d27-4250-980b-13a312dcffc3", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "390797",
+    },
+    body: JSON.stringify({
+      sessionId: "390797",
+      location,
+      message,
+      data: {
+        rss: mem.rss,
+        heapUsed: mem.heapUsed,
+        heapTotal: mem.heapTotal,
+        external: mem.external,
+        arrayBuffers: mem.arrayBuffers,
+        inFlightMoves,
+        processExistingRunning,
+        watcherGeneration,
+        hasWatcher: Boolean(watcher),
+        logSendCount,
+        ...data,
+      },
+      timestamp: Date.now(),
+      hypothesisId,
+    }),
+  }).catch(() => {});
+}
+function startDebugMemTimer() {
+  if (debugMemTimer) {
+    clearInterval(debugMemTimer);
+  }
+  debugMemTimer = setInterval(() => {
+    debugLog("main.js:debugMemTimer", "periodic-memory", {}, "H5");
+  }, 4000);
+}
+function stopDebugMemTimer() {
+  if (debugMemTimer) {
+    clearInterval(debugMemTimer);
+    debugMemTimer = null;
+  }
+}
+// #endregion
+
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("ozone-platform-hint", "auto");
+  if (!app.isPackaged) {
+    app.commandLine.appendSwitch("no-sandbox");
   }
 }
 
-// Function to move file to appropriate folder
-function moveFile(filePath) {
+const PROTECTED_FOLDERS = ["Mobiux", "Personal", "Protected"];
+const CATEGORY_FOLDERS = [
+  "Documents",
+  "Images",
+  "Audio",
+  "Video",
+  "Compressed",
+  "Apps",
+  "Ebooks",
+  "Others",
+];
+const INCOMPLETE_EXTENSIONS = new Set([
+  "crdownload",
+  "part",
+  "download",
+  "tmp",
+  "temp",
+  "partial",
+  "filepart",
+  "opdownload",
+]);
+const RETRYABLE_MOVE_ERRORS = new Set([
+  "EBUSY",
+  "EPERM",
+  "EACCES",
+  "EAGAIN",
+  "ENOENT",
+  "ELOCKED",
+]);
+
+const fileCategories = {
+  documents: [
+    "pdf",
+    "doc",
+    "docx",
+    "txt",
+    "rtf",
+    "odt",
+    "xls",
+    "xlsx",
+    "ppt",
+    "pptx",
+    "pages",
+    "numbers",
+    "key",
+    "csv",
+  ],
+  images: [
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "psd",
+    "ico",
+    "icns",
+    "bmp",
+    "tiff",
+    "tif",
+    "webp",
+    "svg",
+    "heic",
+    "heif",
+    "avif",
+  ],
+  audio: ["mp3", "wav", "ogg", "flac", "m4a", "aac", "aiff", "wma"],
+  video: ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpeg", "mpg"],
+  compressed: ["zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz"],
+  apps: [
+    "exe",
+    "msi",
+    "bat",
+    "cmd",
+    "dmg",
+    "pkg",
+    "app",
+    "deb",
+    "rpm",
+    "appimage",
+    "snap",
+    "flatpak",
+    "apk",
+  ],
+  ebooks: ["epub", "mobi", "azw", "azw3", "fb2", "lit"],
+};
+
+function getDefaultWatchPath() {
+  let downloadsPath;
   try {
-    if (fs.statSync(filePath).isDirectory()) {
+    downloadsPath = app.getPath("downloads");
+  } catch {
+    downloadsPath = path.join(os.homedir(), "Downloads");
+  }
+
+  if (fs.existsSync(downloadsPath)) {
+    return downloadsPath;
+  }
+
+  try {
+    fs.mkdirSync(downloadsPath, { recursive: true });
+    return downloadsPath;
+  } catch {
+    return os.homedir();
+  }
+}
+
+function sendLog(message) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    logSendCount += 1;
+    mainWindow.webContents.send("log", message);
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createFolderIfNotExists(folderPath) {
+  if (!fs.existsSync(folderPath)) {
+    fs.mkdirSync(folderPath, { recursive: true });
+  }
+}
+
+function isIncompleteDownload(fileName) {
+  const lowerName = fileName.toLowerCase();
+  const ext = path.extname(lowerName).slice(1);
+  return (
+    fileName.startsWith(".") ||
+    fileName.startsWith("~$") ||
+    INCOMPLETE_EXTENSIONS.has(ext)
+  );
+}
+
+function uniqueDestinationPath(destinationPath) {
+  if (!fs.existsSync(destinationPath)) {
+    return destinationPath;
+  }
+
+  const dir = path.dirname(destinationPath);
+  const ext = path.extname(destinationPath);
+  const base = path.basename(destinationPath, ext);
+  let index = 1;
+  let candidate;
+
+  do {
+    candidate = path.join(dir, `${base} (${index})${ext}`);
+    index += 1;
+  } while (fs.existsSync(candidate));
+
+  return candidate;
+}
+
+function getFileCategory(filePath, stats) {
+  const ext = path.extname(filePath).slice(1).toLowerCase();
+
+  if (stats.isDirectory()) {
+    return ext === "app" ? "Apps" : null;
+  }
+
+  for (const [category, extensions] of Object.entries(fileCategories)) {
+    if (extensions.includes(ext)) {
+      return category.charAt(0).toUpperCase() + category.slice(1);
+    }
+  }
+
+  return "Others";
+}
+
+async function movePathSafely(sourcePath, destinationPath) {
+  const maxAttempts = 5;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      try {
+        fs.renameSync(sourcePath, destinationPath);
+      } catch (error) {
+        if (error.code !== "EXDEV") {
+          throw error;
+        }
+        fs.cpSync(sourcePath, destinationPath, { recursive: true });
+        fs.rmSync(sourcePath, { recursive: true, force: true });
+      }
+      return;
+    } catch (error) {
+      if (!RETRYABLE_MOVE_ERRORS.has(error.code) || attempt === maxAttempts - 1) {
+        throw error;
+      }
+      await delay(400);
+    }
+  }
+}
+
+async function moveFile(filePath) {
+  inFlightMoves += 1;
+  // #region agent log
+  if (inFlightMoves > 1 || logSendCount % 10 === 0) {
+    debugLog(
+      "main.js:moveFile:entry",
+      "move-start",
+      { fileName: path.basename(filePath) },
+      "H3"
+    );
+  }
+  // #endregion
+  try {
+    if (!fs.existsSync(filePath)) {
       return;
     }
 
+    const stats = fs.statSync(filePath);
     const fileName = path.basename(filePath);
     const parentFolder = path.basename(path.dirname(filePath));
 
-    // Skip if file is in a protected folder
     if (PROTECTED_FOLDERS.includes(parentFolder)) {
       return;
     }
 
-    const fileExt = path.extname(filePath).slice(1).toLowerCase();
+    if (CATEGORY_FOLDERS.includes(fileName) || PROTECTED_FOLDERS.includes(fileName)) {
+      return;
+    }
 
-    // Skip if it's a temporary file
-    if (!fileExt || fileName.startsWith(".")) return;
+    if (isIncompleteDownload(fileName)) {
+      return;
+    }
 
-    // Define file type categories
-    const fileCategories = {
-      documents: [
-        "pdf",
-        "doc",
-        "docx",
-        "txt",
-        "rtf",
-        "odt",
-        "xls",
-        "xlsx",
-        "ppt",
-        "pptx",
-      ],
-      images: [
-        "jpg",
-        "jpeg",
-        "png",
-        "gif",
-        "psd",
-        "ico",
-        "bmp",
-        "tiff",
-        "webp",
-        "svg",
-        "heic",
-      ],
-      audio: ["mp3", "wav", "ogg", "flac", "m4a", "aac"],
-      video: ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm"],
-      compressed: ["zip", "rar", "7z", "tar", "gz"],
-      apps: ["exe", "msi", "bat", "cmd"],
-      ebooks: ["epub", "mobi", "azw", "azw3", "fb2", "lit"],
-    };
+    const targetFolder = getFileCategory(filePath, stats);
+    if (!targetFolder) {
+      return;
+    }
 
-    // Find the category for this file
-    let targetFolder = "Others";
-    for (const [category, extensions] of Object.entries(fileCategories)) {
-      if (extensions.includes(fileExt)) {
-        targetFolder = category.charAt(0).toUpperCase() + category.slice(1);
-        break;
-      }
+    if (stats.isDirectory() && targetFolder !== "Apps") {
+      return;
     }
 
     const destinationFolder = path.join(selectedPath, targetFolder);
-
-    // Create folder if it doesn't exist
     createFolderIfNotExists(destinationFolder);
 
-    // Construct destination path
-    const destinationPath = path.join(destinationFolder, fileName);
+    const destinationPath = uniqueDestinationPath(
+      path.join(destinationFolder, fileName)
+    );
 
-    // Move the file
-    fs.renameSync(filePath, destinationPath);
-    mainWindow.webContents.send(
-      "log",
-      `Moved ${fileName} to ${targetFolder} folder`
-    );
+    if (path.resolve(filePath) === path.resolve(destinationPath)) {
+      return;
+    }
+
+    await movePathSafely(filePath, destinationPath);
+    sendLog(`Moved ${fileName} to ${targetFolder} folder`);
   } catch (error) {
-    mainWindow.webContents.send(
-      "log",
-      `Error processing file: ${error.message}`
-    );
+    sendLog(`Error processing file: ${error.message}`);
+  } finally {
+    inFlightMoves -= 1;
   }
 }
 
-// Function to process existing files
 async function processExistingFiles() {
-  mainWindow.webContents.send(
-    "log",
-    `Processing existing files in ${selectedPath} folder...`
-  );
+  processExistingRunning = true;
+  // #region agent log
+  debugLog("main.js:processExistingFiles:start", "process-existing-start", {}, "H4");
+  // #endregion
+  try {
+  if (!selectedPath || !fs.existsSync(selectedPath)) {
+    sendLog("Selected folder does not exist.");
+    return;
+  }
+
+  sendLog(`Processing existing files in ${selectedPath} folder...`);
   const files = fs.readdirSync(selectedPath);
+  // #region agent log
+  debugLog(
+    "main.js:processExistingFiles:readdir",
+    "process-existing-listing",
+    { fileCount: files.length },
+    "H4"
+  );
+  // #endregion
+
   for (const file of files) {
-    const filePath = path.join(selectedPath, file);
-    // Skip protected folders and their contents
-    if (PROTECTED_FOLDERS.includes(file)) {
+    if (PROTECTED_FOLDERS.includes(file) || CATEGORY_FOLDERS.includes(file)) {
       continue;
     }
-    if (fs.statSync(filePath).isFile()) {
-      moveFile(filePath);
+
+    const filePath = path.join(selectedPath, file);
+    try {
+      await moveFile(filePath);
+    } catch (error) {
+      sendLog(`Error processing ${file}: ${error.message}`);
     }
   }
-  mainWindow.webContents.send("log", "Finished processing existing files.");
+
+  sendLog("Finished processing existing files.");
+  } finally {
+    processExistingRunning = false;
+    // #region agent log
+    debugLog("main.js:processExistingFiles:end", "process-existing-end", {}, "H4");
+    // #endregion
+  }
 }
 
 function startWatcher() {
   if (watcher) {
-    watcher.close();
+    const oldWatcher = watcher;
+    const oldGeneration = watcherGeneration;
+    // #region agent log
+    debugLog(
+      "main.js:startWatcher:close-old",
+      "closing-old-watcher-without-await",
+      { oldGeneration, addListeners: oldWatcher.listenerCount("add") },
+      "H2"
+    );
+    // #endregion
+    const closeResult = oldWatcher.close();
+    if (closeResult && typeof closeResult.then === "function") {
+      closeResult.then(() => {
+        // #region agent log
+        debugLog(
+          "main.js:startWatcher:old-closed",
+          "old-watcher-close-resolved",
+          { oldGeneration, stillSameInstance: watcher === oldWatcher },
+          "H2"
+        );
+        // #endregion
+      }).catch(() => {});
+    }
+  }
+
+  if (!selectedPath || !fs.existsSync(selectedPath)) {
+    sendLog("Cannot monitor: selected folder does not exist.");
+    return;
   }
 
   watcher = chokidar.watch(selectedPath, {
     ignored: [
-      /(^|[\/\\])\../, // ignore hidden files
+      /(^|[\\/])\../,
       "**/Documents/**",
       "**/Images/**",
       "**/Audio/**",
@@ -142,80 +412,219 @@ function startWatcher() {
     persistent: true,
     ignoreInitial: true,
     depth: 0,
+    ignorePermissionErrors: true,
+    awaitWriteFinish: {
+      stabilityThreshold: 1000,
+      pollInterval: 200,
+    },
   });
 
   watcher
     .on("add", (filePath) => {
-      setTimeout(() => moveFile(filePath), 1000);
+      moveFile(filePath);
+    })
+    .on("addDir", (dirPath) => {
+      if (path.resolve(dirPath) !== path.resolve(selectedPath)) {
+        moveFile(dirPath);
+      }
     })
     .on("error", (error) => {
-      mainWindow.webContents.send("log", `Watcher error: ${error}`);
+      sendLog(`Watcher error: ${error}`);
     });
 
-  mainWindow.webContents.send("log", `Monitoring folder: ${selectedPath}`);
+  watcherGeneration += 1;
+  startDebugMemTimer();
+  sendLog(`Monitoring folder: ${selectedPath}`);
+  // #region agent log
+  debugLog(
+    "main.js:startWatcher:created",
+    "watcher-created",
+    { addListeners: watcher.listenerCount("add") },
+    "H2"
+  );
+  // #endregion
+}
+
+function setupApplicationMenu() {
+  if (process.platform !== "darwin") {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+
+  const template = [
+    {
+      label: app.name,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" },
+      ],
+    },
+    {
+      role: "window",
+      submenu: [{ role: "minimize" }, { role: "close" }],
+    },
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function getWindowOptions() {
+  const isMac = process.platform === "darwin";
+  const isWin = process.platform === "win32";
+
+  const options = {
+    width: 460,
+    height: 600,
+    useContentSize: true,
+    show: false,
+    backgroundColor: "#00000000",
+    roundedCorners: true,
+    hasShadow: true,
+    acceptFirstMouse: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+    icon: path.join(__dirname, "icon.png"),
+    autoHideMenuBar: !isMac,
+    resizable: false,
+  };
+
+  if (isMac) {
+    options.vibrancy = "fullscreen-ui";
+    options.visualEffectState = "active";
+    options.titleBarStyle = "hiddenInset";
+    options.trafficLightPosition = { x: 16, y: 18 };
+  } else if (isWin) {
+    options.backgroundMaterial = "acrylic";
+  }
+
+  return options;
 }
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 500,
-    height: 550,
-    webPreferences: {
-      // preload: path.join(__dirname, "preload.js"),
-      nodeIntegration: true,
-      contextIsolation: false,
-      // enableRemoteModule: false,
-    },
-    icon: path.join(__dirname, "icon.png"), // Set the app icon
-    resizable: false, // Make the window non-resizable
+  mainWindow = new BrowserWindow(getWindowOptions());
+  mainWindow.setBackgroundColor("#00000000");
+
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.show();
   });
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.webContents.send("folder-path", selectedPath);
+  });
+
   mainWindow.loadFile("index.html");
-  // Open the DevTools.
-  // mainWindow.webContents.openDevTools();
 }
 
-// Remove the default menu
-Menu.setApplicationMenu(null);
-app.whenReady().then(createWindow);
+function closeWatcher() {
+  if (watcher) {
+    const closing = watcher;
+    watcher = null;
+    stopDebugMemTimer();
+    // #region agent log
+    debugLog("main.js:closeWatcher", "close-watcher-called", {}, "H2");
+    // #endregion
+    const closeResult = closing.close();
+    if (closeResult && typeof closeResult.then === "function") {
+      closeResult.then(() => {
+        // #region agent log
+        debugLog("main.js:closeWatcher:resolved", "watcher-close-resolved", {}, "H2");
+        // #endregion
+      }).catch(() => {});
+    }
+  }
+}
 
-// Quit when all windows are closed
+app.whenReady().then(() => {
+  selectedPath = getDefaultWatchPath();
+  console.log(`Default folder (${process.platform}/${process.arch}): ${selectedPath}`);
+  setupApplicationMenu();
+  createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
+  });
+});
+
 app.on("window-all-closed", () => {
+  closeWatcher();
   if (process.platform !== "darwin") {
     app.quit();
   }
 });
 
-// Handle start monitoring
+app.on("before-quit", () => {
+  closeWatcher();
+});
+
+ipcMain.handle("get-selected-folder", () => selectedPath);
+
 ipcMain.on("start-monitoring", (event, processExisting) => {
+  // #region agent log
+  debugLog(
+    "main.js:start-monitoring",
+    "start-monitoring-ipc",
+    { processExisting },
+    "H4"
+  );
+  // #endregion
   if (processExisting) {
     processExistingFiles();
   }
   startWatcher();
+  // #region agent log
+  debugLog(
+    "main.js:start-monitoring:after-start",
+    "watcher-started-maybe-overlap",
+    { processExisting },
+    "H4"
+  );
+  // #endregion
 });
 
-// Handle stop monitoring
-ipcMain.on("stop-monitoring", (event) => {
+ipcMain.on("stop-monitoring", () => {
   if (watcher) {
-    watcher.close();
-    mainWindow.webContents.send("log", "Stopped monitoring");
+    closeWatcher();
+    sendLog("Stopped monitoring");
   }
 });
 
-// Add folder selection handler
 ipcMain.handle("select-folder", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
+    defaultPath: selectedPath || os.homedir(),
     properties: ["openDirectory"],
   });
 
   if (!result.canceled && result.filePaths.length > 0) {
     selectedPath = result.filePaths[0];
-    if (watcher) {
-      watcher.close();
-      mainWindow.webContents.send("log", `Selected ${selectedPath} folder`);
-    }
+    closeWatcher();
+    sendLog(`Selected ${selectedPath} folder`);
     return selectedPath;
   }
+
   return null;
 });
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
