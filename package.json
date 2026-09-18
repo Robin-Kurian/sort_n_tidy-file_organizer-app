@@ -1,5 +1,6 @@
 {
   "name": "sort_and_tidy-file_organizer-app",
+  "productName": "Sort & Tidy",
   "version": "1.0.0",
   "main": "main.js",
   "scripts": {
@@ -39,7 +40,11 @@
       ],
       "icon": "assets/icon.png",
       "category": "public.app-category.utilities",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "CFBundleName": "Sort & Tidy",
+        "CFBundleDisplayName": "Sort & Tidy"
+      }
     },
     "win": {
       "target": "nsis",

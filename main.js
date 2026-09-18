@@ -4,6 +4,12 @@ const fs = require("fs");
 const os = require("os");
 const chokidar = require("chokidar");
 
+const APP_NAME = "Sort & Tidy";
+app.setName(APP_NAME);
+app.setAboutPanelOptions({
+  applicationName: APP_NAME,
+});
+
 let mainWindow;
 let watcher;
 let selectedPath = null;
@@ -453,17 +459,17 @@ function setupApplicationMenu() {
 
   const template = [
     {
-      label: app.name,
+      label: APP_NAME,
       submenu: [
-        { role: "about" },
+        { role: "about", label: `About ${APP_NAME}` },
         { type: "separator" },
         { role: "services" },
         { type: "separator" },
-        { role: "hide" },
+        { role: "hide", label: `Hide ${APP_NAME}` },
         { role: "hideOthers" },
         { role: "unhide" },
         { type: "separator" },
-        { role: "quit" },
+        { role: "quit", label: `Quit ${APP_NAME}` },
       ],
     },
     {
