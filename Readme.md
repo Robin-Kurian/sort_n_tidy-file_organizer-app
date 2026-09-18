@@ -1,4 +1,4 @@
-# Sort & Tidy
+# Sort N Tidy
 
 Desktop app that watches a folder and sorts new files into type folders: Documents, Images, Audio, Video, Compressed, Apps, Ebooks, and Others.
 
@@ -25,17 +25,17 @@ Folders named `Mobiux`, `Personal`, or `Protected` are left alone.
 
 | Platform | Command | Output |
 | --- | --- | --- |
-| macOS | `npm run build-mac` | `dist/Sort & Tidy-1.0.0-arm64.dmg` |
-| Windows | `npm run build-win` | `dist/Sort & Tidy Setup.exe` |
+| macOS | `npm run build-mac` | `dist/Sort N Tidy-1.0.0-arm64.dmg` |
+| Windows | `npm run build-win` | `dist/Sort N Tidy Setup.exe` |
 | Linux | `npm run build-linux` | AppImage and `.deb` in `dist/` |
 | Current OS | `npm run build` | Platform default installer |
 
-On a Mac, drag **Sort & Tidy** from the DMG into Applications. The first launch of an unsigned build may need **Right-click → Open**.
+On a Mac, drag **Sort N Tidy** from the DMG into Applications. The first launch of an unsigned build may need **Right-click → Open**.
 
 ## Project layout
 
 ```
-sort_and_tidy-file_organizer-app/
+sort_n_tidy-file_organizer-app/
 ├── package.json
 ├── main.js          # Electron main process
 ├── index.html

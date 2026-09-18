@@ -1,6 +1,6 @@
 {
-  "name": "sort_and_tidy-file_organizer-app",
-  "productName": "Sort & Tidy",
+  "name": "sort_n_tidy-file_organizer-app",
+  "productName": "Sort N Tidy",
   "version": "1.0.0",
   "main": "main.js",
   "scripts": {
@@ -16,16 +16,16 @@
     "files",
     "organizer"
   ],
-  "author": "Sort & Tidy",
+  "author": "Sort N Tidy",
   "license": "ISC",
   "dependencies": {
     "chokidar": "^4.0.3",
     "electron-log": "^5.2.4"
   },
-  "description": "Sort & Tidy — automatically organize files in a folder by type",
+  "description": "Sort N Tidy — automatically organize files in a folder by type",
   "build": {
     "appId": "com.sorttidy.app",
-    "productName": "Sort & Tidy",
+    "productName": "Sort N Tidy",
     "files": [
       "**/*",
       "!main.v1.js"
@@ -42,8 +42,8 @@
       "category": "public.app-category.utilities",
       "hardenedRuntime": false,
       "extendInfo": {
-        "CFBundleName": "Sort & Tidy",
-        "CFBundleDisplayName": "Sort & Tidy"
+        "CFBundleName": "Sort N Tidy",
+        "CFBundleDisplayName": "Sort N Tidy"
       }
     },
     "win": {
@@ -57,7 +57,7 @@
       ],
       "icon": "assets/icon.png",
       "category": "Utility",
-      "executableName": "sort_and_tidy-file_organizer-app",
+      "executableName": "sort_n_tidy-file_organizer-app",
       "synopsis": "Automatically organize files in a folder by type"
     },
     "nsis": {

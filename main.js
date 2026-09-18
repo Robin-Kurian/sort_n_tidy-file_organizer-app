@@ -4,7 +4,7 @@ const fs = require("fs");
 const os = require("os");
 const chokidar = require("chokidar");
 
-const APP_NAME = "Sort & Tidy";
+const APP_NAME = "Sort N Tidy";
 app.setName(APP_NAME);
 app.setAboutPanelOptions({
   applicationName: APP_NAME,
