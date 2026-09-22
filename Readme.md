@@ -1,3 +1,5 @@
+![YT Music Manager](https://res.cloudinary.com/itsrobin/image/upload/v1790092653/sort_n_tidy_asrvwv.png)
+
 # Sort N Tidy
 
 Desktop app that watches a folder and sorts new files into type folders: Documents, Images, Audio, Video, Compressed, Apps, Ebooks, and Others.
