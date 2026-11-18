@@ -19,16 +19,14 @@
   "author": "Sort N Tidy",
   "license": "ISC",
   "dependencies": {
-    "chokidar": "^4.0.3",
-    "electron-log": "^5.2.4"
+    "chokidar": "^4.0.3"
   },
   "description": "Sort N Tidy — automatically organize files in a folder by type",
   "build": {
     "appId": "com.sorttidy.app",
     "productName": "Sort N Tidy",
     "files": [
-      "**/*",
-      "!main.v1.js"
+      "**/*"
     ],
     "directories": {
       "buildResources": "assets"
