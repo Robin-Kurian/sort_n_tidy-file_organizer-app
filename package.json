@@ -1,7 +1,7 @@
 {
   "name": "sort_n_tidy-file_organizer-app",
   "productName": "Sort N Tidy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "main.js",
   "scripts": {
     "start": "electron .",

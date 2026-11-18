@@ -33,7 +33,7 @@ Folders named `Mobiux`, `Personal`, or `Protected` are left alone.
 
 | Platform | Command | Output |
 | --- | --- | --- |
-| macOS | `npm run build-mac` | `dist/Sort N Tidy-1.0.0-arm64.dmg` |
+| macOS | `npm run build-mac` | `dist/Sort N Tidy-1.0.1-arm64.dmg` |
 | Windows | `npm run build-win` | `dist/Sort N Tidy Setup.exe` |
 | Linux | `npm run build-linux` | AppImage and `.deb` in `dist/` |
 | Current OS | `npm run build` | Platform default installer |
