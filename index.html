@@ -30,6 +30,10 @@
                 <input type="checkbox" id="processExisting">
                 <span>Process existing files</span>
             </label>
+            <label class="checkbox-container" for="resortOthers">
+                <input type="checkbox" id="resortOthers">
+                <span>Re-sort recognized files in Others</span>
+            </label>
             <div class="button-row">
                 <button id="startBtn" type="button">Start Monitoring</button>
                 <button id="stopBtn" class="hidden" type="button">Stop Monitoring</button>
@@ -65,24 +69,44 @@
         }
 
         document.getElementById('selectFolderBtn').addEventListener('click', async () => {
-            const newPath = await ipcRenderer.invoke('select-folder');
-            setCurrentFolder(newPath);
+            document.getElementById('selectFolderBtn').disabled = true;
+            document.getElementById('startBtn').disabled = true;
+            try {
+                const newPath = await ipcRenderer.invoke('select-folder');
+                setCurrentFolder(newPath);
+            } catch (error) { window.alert(error.message); }
+            finally {
+                document.getElementById('selectFolderBtn').disabled = false;
+                document.getElementById('startBtn').disabled = false;
+            }
         });
 
-        document.getElementById('startBtn').addEventListener('click', () => {
-            const processExisting = document.getElementById('processExisting').checked;
-            ipcRenderer.send('start-monitoring', processExisting);
-            document.getElementById('startBtn').classList.add('hidden');
-            document.getElementById('folderSelectBlock').classList.add('hidden');
-            document.getElementById('stopBtn').classList.remove('hidden');
-        });
-
-        document.getElementById('stopBtn').addEventListener('click', () => {
-            ipcRenderer.send('stop-monitoring');
-            document.getElementById('stopBtn').classList.add('hidden');
-            document.getElementById('folderSelectBlock').classList.remove('hidden');
-            document.getElementById('startBtn').classList.remove('hidden');
-        });
+        function setMonitoring(running) {
+            document.getElementById('startBtn').classList.toggle('hidden', running);
+            document.getElementById('folderSelectBlock').classList.toggle('hidden', running);
+            document.getElementById('stopBtn').classList.toggle('hidden', !running);
+            document.getElementById('processExisting').disabled = running;
+            document.getElementById('resortOthers').disabled = running;
+        }
+        async function changeMonitoring(running) {
+            const button = document.getElementById(running ? 'startBtn' : 'stopBtn');
+            button.disabled = true;
+            document.getElementById('selectFolderBtn').disabled = true;
+            try {
+                const result = await ipcRenderer.invoke(running ? 'start-monitoring' : 'stop-monitoring', {
+                    processExisting: document.getElementById('processExisting').checked,
+                    resortOthers: document.getElementById('resortOthers').checked
+                });
+                if (result.ok) setMonitoring(running);
+                else window.alert(result.error);
+            } catch (error) { window.alert(error.message); }
+            finally {
+                button.disabled = false;
+                document.getElementById('selectFolderBtn').disabled = false;
+            }
+        }
+        document.getElementById('startBtn').addEventListener('click', () => changeMonitoring(true));
+        document.getElementById('stopBtn').addEventListener('click', () => changeMonitoring(false));
 
         document.getElementById('clearLogBtn').addEventListener('click', () => {
             document.getElementById('logContainer').innerHTML = '';
@@ -98,15 +122,9 @@
             logEntry.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
             logContainer.appendChild(logEntry);
             logContainer.scrollTop = logContainer.scrollHeight;
-            // #region agent log
-            if (logContainer.childElementCount <= 3 || logContainer.childElementCount % 10 === 0) {
-                const mem = (performance && performance.memory) ? {
-                    usedJSHeapSize: performance.memory.usedJSHeapSize,
-                    totalJSHeapSize: performance.memory.totalJSHeapSize
-                } : {};
-                fetch('http://127.0.0.1:7547/ingest/d0098482-1d27-4250-980b-13a312dcffc3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'390797'},body:JSON.stringify({sessionId:'390797',location:'index.html:log',message:'renderer-log-append',data:{logNodeCount:logContainer.childElementCount,logLength:String(message).length,...mem},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+            while (logContainer.childElementCount > 500) {
+                logContainer.firstElementChild.remove();
             }
-            // #endregion
         });
 
         loadSelectedFolder();

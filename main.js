@@ -13,58 +13,10 @@ app.setAboutPanelOptions({
 let mainWindow;
 let watcher;
 let selectedPath = null;
-let inFlightMoves = 0;
-let processExistingRunning = false;
-let watcherGeneration = 0;
-let debugMemTimer = null;
-let logSendCount = 0;
-
-// #region agent log
-function debugLog(location, message, data, hypothesisId) {
-  const mem = process.memoryUsage();
-  fetch("http://127.0.0.1:7547/ingest/d0098482-1d27-4250-980b-13a312dcffc3", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "390797",
-    },
-    body: JSON.stringify({
-      sessionId: "390797",
-      location,
-      message,
-      data: {
-        rss: mem.rss,
-        heapUsed: mem.heapUsed,
-        heapTotal: mem.heapTotal,
-        external: mem.external,
-        arrayBuffers: mem.arrayBuffers,
-        inFlightMoves,
-        processExistingRunning,
-        watcherGeneration,
-        hasWatcher: Boolean(watcher),
-        logSendCount,
-        ...data,
-      },
-      timestamp: Date.now(),
-      hypothesisId,
-    }),
-  }).catch(() => {});
-}
-function startDebugMemTimer() {
-  if (debugMemTimer) {
-    clearInterval(debugMemTimer);
-  }
-  debugMemTimer = setInterval(() => {
-    debugLog("main.js:debugMemTimer", "periodic-memory", {}, "H5");
-  }, 4000);
-}
-function stopDebugMemTimer() {
-  if (debugMemTimer) {
-    clearInterval(debugMemTimer);
-    debugMemTimer = null;
-  }
-}
-// #endregion
+let session;
+let scanPromise;
+let transition = Promise.resolve();
+const { Organizer, CATEGORY_FOLDERS, PROTECTED_FOLDERS } = require('./organizer');
 
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("ozone-platform-hint", "auto");
@@ -72,91 +24,6 @@ if (process.platform === "linux") {
     app.commandLine.appendSwitch("no-sandbox");
   }
 }
-
-const PROTECTED_FOLDERS = ["Mobiux", "Personal", "Protected"];
-const CATEGORY_FOLDERS = [
-  "Documents",
-  "Images",
-  "Audio",
-  "Video",
-  "Compressed",
-  "Apps",
-  "Ebooks",
-  "Others",
-];
-const INCOMPLETE_EXTENSIONS = new Set([
-  "crdownload",
-  "part",
-  "download",
-  "tmp",
-  "temp",
-  "partial",
-  "filepart",
-  "opdownload",
-]);
-const RETRYABLE_MOVE_ERRORS = new Set([
-  "EBUSY",
-  "EPERM",
-  "EACCES",
-  "EAGAIN",
-  "ENOENT",
-  "ELOCKED",
-]);
-
-const fileCategories = {
-  documents: [
-    "pdf",
-    "doc",
-    "docx",
-    "txt",
-    "rtf",
-    "odt",
-    "xls",
-    "xlsx",
-    "ppt",
-    "pptx",
-    "pages",
-    "numbers",
-    "key",
-    "csv",
-  ],
-  images: [
-    "jpg",
-    "jpeg",
-    "png",
-    "gif",
-    "psd",
-    "ico",
-    "icns",
-    "bmp",
-    "tiff",
-    "tif",
-    "webp",
-    "svg",
-    "heic",
-    "heif",
-    "avif",
-  ],
-  audio: ["mp3", "wav", "ogg", "flac", "m4a", "aac", "aiff", "wma"],
-  video: ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpeg", "mpg"],
-  compressed: ["zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz"],
-  apps: [
-    "exe",
-    "msi",
-    "bat",
-    "cmd",
-    "dmg",
-    "pkg",
-    "app",
-    "deb",
-    "rpm",
-    "appimage",
-    "snap",
-    "flatpak",
-    "apk",
-  ],
-  ebooks: ["epub", "mobi", "azw", "azw3", "fb2", "lit"],
-};
 
 function getDefaultWatchPath() {
   let downloadsPath;
@@ -180,275 +47,58 @@ function getDefaultWatchPath() {
 
 function sendLog(message) {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    logSendCount += 1;
     mainWindow.webContents.send("log", message);
   }
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+async function closeWatcher() {
+  const closing = watcher;
+  watcher = null;
+  const stopping = session;
+  session = null;
+  const stopped = stopping ? stopping.stop() : Promise.resolve();
+  await Promise.all([closing ? closing.close() : Promise.resolve(), stopped, scanPromise]);
+  scanPromise = null;
 }
 
-function createFolderIfNotExists(folderPath) {
-  if (!fs.existsSync(folderPath)) {
-    fs.mkdirSync(folderPath, { recursive: true });
+async function startWatcher(options) {
+  await closeWatcher();
+  if (!selectedPath || !(await fs.promises.stat(selectedPath)).isDirectory()) {
+    throw new Error('Selected folder is not a directory.');
   }
-}
-
-function isIncompleteDownload(fileName) {
-  const lowerName = fileName.toLowerCase();
-  const ext = path.extname(lowerName).slice(1);
-  return (
-    fileName.startsWith(".") ||
-    fileName.startsWith("~$") ||
-    INCOMPLETE_EXTENSIONS.has(ext)
-  );
-}
-
-function uniqueDestinationPath(destinationPath) {
-  if (!fs.existsSync(destinationPath)) {
-    return destinationPath;
-  }
-
-  const dir = path.dirname(destinationPath);
-  const ext = path.extname(destinationPath);
-  const base = path.basename(destinationPath, ext);
-  let index = 1;
-  let candidate;
-
-  do {
-    candidate = path.join(dir, `${base} (${index})${ext}`);
-    index += 1;
-  } while (fs.existsSync(candidate));
-
-  return candidate;
-}
-
-function getFileCategory(filePath, stats) {
-  const ext = path.extname(filePath).slice(1).toLowerCase();
-
-  if (stats.isDirectory()) {
-    return ext === "app" ? "Apps" : null;
-  }
-
-  for (const [category, extensions] of Object.entries(fileCategories)) {
-    if (extensions.includes(ext)) {
-      return category.charAt(0).toUpperCase() + category.slice(1);
-    }
-  }
-
-  return "Others";
-}
-
-async function movePathSafely(sourcePath, destinationPath) {
-  const maxAttempts = 5;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    try {
-      try {
-        fs.renameSync(sourcePath, destinationPath);
-      } catch (error) {
-        if (error.code !== "EXDEV") {
-          throw error;
-        }
-        fs.cpSync(sourcePath, destinationPath, { recursive: true });
-        fs.rmSync(sourcePath, { recursive: true, force: true });
-      }
-      return;
-    } catch (error) {
-      if (!RETRYABLE_MOVE_ERRORS.has(error.code) || attempt === maxAttempts - 1) {
-        throw error;
-      }
-      await delay(400);
-    }
-  }
-}
-
-async function moveFile(filePath) {
-  inFlightMoves += 1;
-  // #region agent log
-  if (inFlightMoves > 1 || logSendCount % 10 === 0) {
-    debugLog(
-      "main.js:moveFile:entry",
-      "move-start",
-      { fileName: path.basename(filePath) },
-      "H3"
-    );
-  }
-  // #endregion
-  try {
-    if (!fs.existsSync(filePath)) {
-      return;
-    }
-
-    const stats = fs.statSync(filePath);
-    const fileName = path.basename(filePath);
-    const parentFolder = path.basename(path.dirname(filePath));
-
-    if (PROTECTED_FOLDERS.includes(parentFolder)) {
-      return;
-    }
-
-    if (CATEGORY_FOLDERS.includes(fileName) || PROTECTED_FOLDERS.includes(fileName)) {
-      return;
-    }
-
-    if (isIncompleteDownload(fileName)) {
-      return;
-    }
-
-    const targetFolder = getFileCategory(filePath, stats);
-    if (!targetFolder) {
-      return;
-    }
-
-    if (stats.isDirectory() && targetFolder !== "Apps") {
-      return;
-    }
-
-    const destinationFolder = path.join(selectedPath, targetFolder);
-    createFolderIfNotExists(destinationFolder);
-
-    const destinationPath = uniqueDestinationPath(
-      path.join(destinationFolder, fileName)
-    );
-
-    if (path.resolve(filePath) === path.resolve(destinationPath)) {
-      return;
-    }
-
-    await movePathSafely(filePath, destinationPath);
-    sendLog(`Moved ${fileName} to ${targetFolder} folder`);
-  } catch (error) {
-    sendLog(`Error processing file: ${error.message}`);
-  } finally {
-    inFlightMoves -= 1;
-  }
-}
-
-async function processExistingFiles() {
-  processExistingRunning = true;
-  // #region agent log
-  debugLog("main.js:processExistingFiles:start", "process-existing-start", {}, "H4");
-  // #endregion
-  try {
-  if (!selectedPath || !fs.existsSync(selectedPath)) {
-    sendLog("Selected folder does not exist.");
-    return;
-  }
-
-  sendLog(`Processing existing files in ${selectedPath} folder...`);
-  const files = fs.readdirSync(selectedPath);
-  // #region agent log
-  debugLog(
-    "main.js:processExistingFiles:readdir",
-    "process-existing-listing",
-    { fileCount: files.length },
-    "H4"
-  );
-  // #endregion
-
-  for (const file of files) {
-    if (PROTECTED_FOLDERS.includes(file) || CATEGORY_FOLDERS.includes(file)) {
-      continue;
-    }
-
-    const filePath = path.join(selectedPath, file);
-    try {
-      await moveFile(filePath);
-    } catch (error) {
-      sendLog(`Error processing ${file}: ${error.message}`);
-    }
-  }
-
-  sendLog("Finished processing existing files.");
-  } finally {
-    processExistingRunning = false;
-    // #region agent log
-    debugLog("main.js:processExistingFiles:end", "process-existing-end", {}, "H4");
-    // #endregion
-  }
-}
-
-function startWatcher() {
-  if (watcher) {
-    const oldWatcher = watcher;
-    const oldGeneration = watcherGeneration;
-    // #region agent log
-    debugLog(
-      "main.js:startWatcher:close-old",
-      "closing-old-watcher-without-await",
-      { oldGeneration, addListeners: oldWatcher.listenerCount("add") },
-      "H2"
-    );
-    // #endregion
-    const closeResult = oldWatcher.close();
-    if (closeResult && typeof closeResult.then === "function") {
-      closeResult.then(() => {
-        // #region agent log
-        debugLog(
-          "main.js:startWatcher:old-closed",
-          "old-watcher-close-resolved",
-          { oldGeneration, stillSameInstance: watcher === oldWatcher },
-          "H2"
-        );
-        // #endregion
-      }).catch(() => {});
-    }
-  }
-
-  if (!selectedPath || !fs.existsSync(selectedPath)) {
-    sendLog("Cannot monitor: selected folder does not exist.");
-    return;
-  }
-
-  watcher = chokidar.watch(selectedPath, {
-    ignored: [
-      /(^|[\\/])\../,
-      "**/Documents/**",
-      "**/Images/**",
-      "**/Audio/**",
-      "**/Video/**",
-      "**/Compressed/**",
-      "**/Apps/**",
-      "**/Ebooks/**",
-      "**/Others/**",
-      ...PROTECTED_FOLDERS.map((folder) => `**/${folder}/**`),
-    ],
+  const root = selectedPath;
+  const current = new Organizer(root, sendLog);
+  session = current;
+  watcher = chokidar.watch(root, {
+    ignored: (entry) => {
+      const relative = path.relative(root, entry);
+      if (!relative) return false;
+      const first = relative.split(path.sep)[0];
+      return first.startsWith('.') || CATEGORY_FOLDERS.includes(first) || PROTECTED_FOLDERS.includes(first);
+    },
     persistent: true,
     ignoreInitial: true,
     depth: 0,
-    ignorePermissionErrors: true,
-    awaitWriteFinish: {
-      stabilityThreshold: 1000,
-      pollInterval: 200,
-    },
+    awaitWriteFinish: { stabilityThreshold: 1000, pollInterval: 200 },
   });
-
-  watcher
-    .on("add", (filePath) => {
-      moveFile(filePath);
-    })
-    .on("addDir", (dirPath) => {
-      if (path.resolve(dirPath) !== path.resolve(selectedPath)) {
-        moveFile(dirPath);
-      }
-    })
-    .on("error", (error) => {
-      sendLog(`Watcher error: ${error}`);
+  watcher.on('add', entry => current.enqueue(entry))
+    .on('addDir', entry => { if (entry !== root) current.enqueue(entry); })
+    .on('error', error => sendLog(`Watcher error: ${error.message}`));
+  // Wait for initial discovery before scanning, so new arrivals are not missed.
+  try {
+    await new Promise((resolve, reject) => {
+      const onError = error => { watcher.removeListener('ready', onReady); reject(error); };
+      const onReady = () => { watcher.removeListener('error', onError); resolve(); };
+      watcher.once('ready', onReady).once('error', onError);
     });
-
-  watcherGeneration += 1;
-  startDebugMemTimer();
-  sendLog(`Monitoring folder: ${selectedPath}`);
-  // #region agent log
-  debugLog(
-    "main.js:startWatcher:created",
-    "watcher-created",
-    { addListeners: watcher.listenerCount("add") },
-    "H2"
-  );
-  // #endregion
+  } catch (error) {
+    await closeWatcher();
+    throw error;
+  }
+  sendLog(`Monitoring folder: ${root}`);
+  if (options.processExisting || options.resortOthers) {
+    scanPromise = current.scan(options.resortOthers);
+  }
 }
 
 function setupApplicationMenu() {
@@ -499,7 +149,7 @@ function getWindowOptions() {
 
   const options = {
     width: 460,
-    height: 600,
+    height: 650,
     useContentSize: true,
     show: false,
     backgroundColor: "#00000000",
@@ -542,25 +192,6 @@ function createWindow() {
   mainWindow.loadFile("index.html");
 }
 
-function closeWatcher() {
-  if (watcher) {
-    const closing = watcher;
-    watcher = null;
-    stopDebugMemTimer();
-    // #region agent log
-    debugLog("main.js:closeWatcher", "close-watcher-called", {}, "H2");
-    // #endregion
-    const closeResult = closing.close();
-    if (closeResult && typeof closeResult.then === "function") {
-      closeResult.then(() => {
-        // #region agent log
-        debugLog("main.js:closeWatcher:resolved", "watcher-close-resolved", {}, "H2");
-        // #endregion
-      }).catch(() => {});
-    }
-  }
-}
-
 app.whenReady().then(() => {
   selectedPath = getDefaultWatchPath();
   console.log(`Default folder (${process.platform}/${process.arch}): ${selectedPath}`);
@@ -576,61 +207,41 @@ app.whenReady().then(() => {
   });
 });
 
-app.on("window-all-closed", () => {
-  closeWatcher();
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
-
-app.on("before-quit", () => {
-  closeWatcher();
-});
-
-ipcMain.handle("get-selected-folder", () => selectedPath);
-
-ipcMain.on("start-monitoring", (event, processExisting) => {
-  // #region agent log
-  debugLog(
-    "main.js:start-monitoring",
-    "start-monitoring-ipc",
-    { processExisting },
-    "H4"
-  );
-  // #endregion
-  if (processExisting) {
-    processExistingFiles();
-  }
-  startWatcher();
-  // #region agent log
-  debugLog(
-    "main.js:start-monitoring:after-start",
-    "watcher-started-maybe-overlap",
-    { processExisting },
-    "H4"
-  );
-  // #endregion
-});
-
-ipcMain.on("stop-monitoring", () => {
-  if (watcher) {
-    closeWatcher();
-    sendLog("Stopped monitoring");
-  }
-});
-
-ipcMain.handle("select-folder", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    defaultPath: selectedPath || os.homedir(),
-    properties: ["openDirectory"],
+app.on('window-all-closed', () => {
+  transition = transition.then(closeWatcher).finally(() => {
+    if (process.platform !== 'darwin') app.quit();
   });
+});
+let quitting = false;
+app.on('before-quit', event => {
+  if (quitting) return;
+  event.preventDefault();
+  transition = transition.then(closeWatcher).finally(() => { quitting = true; app.quit(); });
+});
 
-  if (!result.canceled && result.filePaths.length > 0) {
+ipcMain.handle('get-selected-folder', () => selectedPath);
+function changeState(action) {
+  const result = transition.then(action);
+  transition = result.catch(() => {});
+  return result.then(() => ({ ok: true }), error => ({ ok: false, error: error.message }));
+}
+ipcMain.handle('start-monitoring', (event, options = {}) => changeState(() => startWatcher({
+  processExisting: options.processExisting === true,
+  resortOthers: options.resortOthers === true,
+})));
+ipcMain.handle('stop-monitoring', () => changeState(async () => {
+  await closeWatcher();
+  sendLog('Stopped monitoring');
+}));
+ipcMain.handle('select-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    defaultPath: selectedPath || os.homedir(), properties: ['openDirectory'],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  await changeState(async () => {
+    await closeWatcher();
     selectedPath = result.filePaths[0];
-    closeWatcher();
     sendLog(`Selected ${selectedPath} folder`);
-    return selectedPath;
-  }
-
-  return null;
+  });
+  return selectedPath;
 });
