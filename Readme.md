@@ -8,6 +8,8 @@ Works on **macOS**, **Windows**, and **Ubuntu** (Linux).
 
 ## Run
 
+Use Node.js 22.12 or newer to install dependencies and build the app.
+
 ```bash
 npm install
 npm start
@@ -33,7 +35,7 @@ Folders named `Mobiux`, `Personal`, or `Protected` are left alone.
 
 | Platform | Command | Output |
 | --- | --- | --- |
-| macOS | `npm run build-mac` | `dist/Sort N Tidy-1.0.1-arm64.dmg` |
+| macOS | `npm run build-mac` | `dist/Sort N Tidy-1.0.2-arm64.dmg` |
 | Windows | `npm run build-win` | `dist/Sort N Tidy Setup.exe` |
 | Linux | `npm run build-linux` | AppImage and `.deb` in `dist/` |
 | Current OS | `npm run build` | Platform default installer |
@@ -76,3 +78,7 @@ npx electron --inspect=5858 .
 ## Tests
 
 Run `npm test` with Node.js 20 or newer. Tests use temporary folders and do not require Electron or access your Downloads folder.
+
+The build dependencies override minimatch 7–10 to patched 11.x because their upstream ranges still select versions affected by GHSA-g3hv-75wg-m249. Legacy minimatch 3.x/5.x consumers retain their compatible versions. Remove the override once the build tools adopt patched versions.
+
+macOS signing skips individual Electron locale data files. They remain sealed by the framework/app resource signature; executables and bundles are signed with timestamping enabled. This avoids hundreds of unnecessary timestamp requests.

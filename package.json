@@ -1,7 +1,7 @@
 {
   "name": "sort_n_tidy-file_organizer-app",
   "productName": "Sort N Tidy",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -44,7 +44,10 @@
       "extendInfo": {
         "CFBundleName": "Sort N Tidy",
         "CFBundleDisplayName": "Sort N Tidy"
-      }
+      },
+      "signIgnore": [
+        "/Resources/[^/]+\\.lproj/locale\\.pak$"
+      ]
     },
     "win": {
       "target": "nsis",
@@ -68,7 +71,13 @@
     }
   },
   "devDependencies": {
-    "electron": "^34.0.1",
-    "electron-builder": "^25.1.8"
+    "electron": "^45.3.4",
+    "electron-builder": "^26.18.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "overrides": {
+    "minimatch@>=7 <11.0.1": "^11.0.9"
   }
 }
